@@ -1,11 +1,5 @@
 name: Scheduled assets update
 
-# NOTE: This Github Actions is required by other actions, for preparing other packaging assets in a
-#       routine manner, for example: GeoIP/GeoSite.
-#       Currently updating:
-#       - Geodat (GeoIP/Geosite)
-#       - Wintun (wintun.dll)
-
 on:
   workflow_dispatch:
   schedule:

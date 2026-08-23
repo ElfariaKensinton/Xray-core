@@ -1,0 +1,247 @@
+name: Build and Release (patched allowInsecure)
+
+on:
+  workflow_dispatch:
+    inputs:
+      push_to_release:
+        description: Push generated packages to a GitHub Release
+        required: false
+        type: boolean
+        default: false
+  release:
+    types: [published]
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-assets:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    steps:
+      - name: Restore Geodat Cache
+        uses: actions/cache/restore@v6
+        with:
+          path: resources
+          key: xray-geodat-
+      - name: Restore Wintun Cache
+        uses: actions/cache/restore@v6
+        with:
+          path: resources
+          key: xray-wintun-
+      - name: Check Assets Existence
+        id: check-assets
+        run: |
+          [ -d resources ] || mkdir resources
+          for f in geoip.dat geosite.dat; do
+            if [ ! -s "resources/$f" ]; then echo "missing=true" >> "$GITHUB_OUTPUT"; break; fi
+          done
+          for arch in amd64 x86 arm64; do
+            if [ ! -s "resources/wintun/bin/$arch/wintun.dll" ]; then echo "missing=true" >> "$GITHUB_OUTPUT"; break; fi
+          done
+      - name: Trigger Asset Update Workflow if Assets Missing
+        if: steps.check-assets.outputs.missing == 'true'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id: 'scheduled-assets-update.yml', ref: context.ref });
+      - name: Wait for Asset Update
+        if: steps.check-assets.outputs.missing == 'true'
+        run: sleep 90
+
+  build:
+    needs: check-assets
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [windows, freebsd, openbsd, linux, darwin]
+        goarch: [amd64, 386]
+        patch-assetname: [""]
+        exclude:
+          - goarch: 386
+            goos: darwin
+        include:
+          - goos: darwin
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+            goarm: 7
+          - goos: linux
+            goarch: arm
+            goarm: 6
+          - goos: linux
+            goarch: arm
+            goarm: 5
+          - goos: android
+            goarch: arm64
+          - goos: android
+            goarch: amd64
+            patch-assetname: android-amd64
+          - goos: windows
+            goarch: arm64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: riscv64
+          - goos: linux
+            goarch: loong64
+          - goos: linux
+            goarch: mips64
+          - goos: linux
+            goarch: mips64le
+          - goos: linux
+            goarch: mipsle
+          - goos: linux
+            goarch: mips
+          - goos: linux
+            goarch: ppc64
+          - goos: linux
+            goarch: ppc64le
+          - goos: freebsd
+            goarch: arm64
+          - goos: freebsd
+            goarch: arm
+            goarm: 7
+          - goos: linux
+            goarch: s390x
+          - goos: openbsd
+            goarch: arm64
+          - goos: openbsd
+            goarch: arm
+            goarm: 7
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOARM: ${{ matrix.goarm }}
+      CGO_ENABLED: 0
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: Install protobuf compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          GOBIN="$RUNNER_TEMP/bin" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          protoc-gen-go --version
+      - name: Apply allowInsecure patch
+        run: bash patches/allow-insecure.sh
+      - name: Set up NDK
+        if: matrix.goos == 'android'
+        run: |
+          wget -qO android-ndk.zip https://dl.google.com/android/repository/android-ndk-r28b-linux.zip
+          unzip android-ndk.zip
+          rm android-ndk.zip
+          declare -A arches=(["amd64"]="x86_64-linux-android24-clang" ["arm64"]="aarch64-linux-android24-clang")
+          echo CC="$(realpath android-ndk-*/toolchains/llvm/prebuilt/linux-x86_64/bin)/${arches[${{ matrix.goarch }}]}" >> "$GITHUB_ENV"
+          echo CGO_ENABLED=1 >> "$GITHUB_ENV"
+      - name: Show workflow information
+        run: |
+          NAME=${{ matrix.patch-assetname }}
+          if [ -z "$NAME" ]; then
+            KEY="$GOOS-$GOARCH$GOARM$GOMIPS"
+            NAME=$(jq -r --arg k "$KEY" '.[$k].friendlyName' .github/build/friendly-filenames.json)
+          fi
+          echo "GOOS: $GOOS, GOARCH: $GOARCH, GOARM: $GOARM, RELEASE_NAME: $NAME"
+          echo "ASSET_NAME=$NAME" >> "$GITHUB_ENV"
+      - name: Resolve release tag
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.push_to_release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            VERSION=$(awk '/Version_x byte =/{x=$NF}/Version_y byte =/{y=$NF}/Version_z byte =/{z=$NF} END {gsub(/[^0-9]/,"",x); gsub(/[^0-9]/,"",y); gsub(/[^0-9]/,"",z); if (x && y && z) print "v" x "." y "." z}' core/core.go)
+            if [ -z "$VERSION" ]; then
+              echo "Failed to determine Xray version from core/core.go" >&2
+              exit 1
+            fi
+            TAG="$VERSION"
+          fi
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG does not exist. Creating it."
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Xray $TAG (patched allowInsecure)" \
+              --notes "Xray-core $TAG with restored allowInsecure compatibility."
+          fi
+
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Using release tag: $TAG"
+      - name: Get project dependencies
+        run: go mod download
+      - name: Build Xray
+        run: |
+          mkdir -p build_assets
+          COMMIT=$(git describe --always --dirty)
+          if [[ $GOOS == windows ]]; then
+            go build -o build_assets/xray.exe -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMIT} -s -w -buildid=" -v ./main
+          elif [[ $GOOS == android ]]; then
+            go build -o build_assets/xray -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMIT} -s -w -buildid= -checklinkname=0" -v ./main
+          elif [[ $GOARCH == mips || $GOARCH == mipsle ]]; then
+            go build -o build_assets/xray -trimpath -buildvcs=false -gcflags="-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMIT} -s -w -buildid=" -v ./main
+            GOMIPS=softfloat go build -o build_assets/xray_softfloat -trimpath -buildvcs=false -gcflags="-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMIT} -s -w -buildid=" -v ./main
+          else
+            go build -o build_assets/xray -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMIT} -s -w -buildid=" -v ./main
+          fi
+      - name: Restore Geodat Cache
+        uses: actions/cache/restore@v6
+        with:
+          path: resources
+          key: xray-geodat-
+      - name: Restore Wintun Cache
+        if: matrix.goos == 'windows'
+        uses: actions/cache/restore@v6
+        with:
+          path: resources
+          key: xray-wintun-
+      - name: Add additional assets into package
+        run: |
+          mv -f resources/geo* build_assets/
+          if [[ $GOOS == windows ]]; then
+            cp .github/build/windows/* build_assets
+            if [[ $GOARCH == amd64 ]]; then mv resources/wintun/bin/amd64/wintun.dll build_assets/; fi
+            if [[ $GOARCH == 386 ]]; then mv resources/wintun/bin/x86/wintun.dll build_assets/; fi
+            if [[ $GOARCH == arm64 ]]; then mv resources/wintun/bin/arm64/wintun.dll build_assets/; fi
+            mv resources/wintun/LICENSE.txt build_assets/LICENSE-Wintun
+          fi
+      - name: Copy README.md & LICENSE
+        run: |
+          cp README.md build_assets/README.md
+          cp LICENSE build_assets/LICENSE
+      - name: Create ZIP archive
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.push_to_release)
+        run: |
+          pushd build_assets
+          touch -mt $(date +%Y01010000) *
+          zip -9vr ../Xray-${ASSET_NAME}.zip .
+          popd
+          FILE=./Xray-${ASSET_NAME}.zip
+          for METHOD in md5 sha1 sha256 sha512; do openssl dgst -$METHOD "$FILE" | sed 's/([^)]*)//g' >> "$FILE.dgst"; done
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.push_to_release)
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ./Xray-${{ env.ASSET_NAME }}.zip*
+          tag: ${{ env.RELEASE_TAG }}
+          file_glob: true
+      - name: Upload files to Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Xray-${{ env.ASSET_NAME }}
+          path: ./build_assets/*

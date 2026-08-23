@@ -1,4 +1,131 @@
+# Xray-install
+
+English | [简体中文](README_zh-Hans.md) | [繁體中文](README_zh-Hant.md)
+
+Bash script for installing Xray in operating systems such as CentOS / Debian / OpenSUSE that support systemd.
+
+**For Alpine or Gentoo Linux users**, please refer to **[OpenRC Specific Instructions](alpinelinux/README.md)** for installation scripts and guides tailored for Alpine/Gentoo Linux featured by OpenRC init-system.
+
+---
+
+#### [Filesystem Hierarchy Standard (FHS)](https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard)
+
+```
+installed: /etc/systemd/system/xray.service
+installed: /etc/systemd/system/xray@.service
+
+installed: /usr/local/bin/xray
+installed: /usr/local/etc/xray/*.json
+
+installed: /usr/local/share/xray/geoip.dat
+installed: /usr/local/share/xray/geosite.dat
+
+installed: /var/log/xray/access.log
+installed: /var/log/xray/error.log
+```
+
+Notice: Xray will NOT log to `/var/log/xray/*.log` by default. Configure `"log"` to specify log files.
+
+## Basic Usage
+
+**Install & Upgrade Xray-core and geodata with `User=nobody`, but will NOT overwrite `User` in existing service files**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ install
+```
+
+**Update geoip.dat and geosite.dat only**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ install-geodata
+```
+
+**Remove Xray, except json and logs**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ remove
+```
+
+## Advance
+
+**Install & Upgrade Xray-core to a pre-release version**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ install --beta
+```
+
+**Install & Upgrade Xray-core and geodata with `logrotate`, `$time` can be in the format of 12:34:56**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ install --logrotate $time
+```
+
+```
+installed: /etc/systemd/system/logrotate@.service
+installed: /etc/systemd/system/logrotate@.timer
+
+installed: /etc/logrotate.d/xray
+```
+
+**Install & Upgrade Xray-core and geodata with `User=root`, which will overwrite `User` in existing service files**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ install -u root
+```
+
+**Install & Upgrade Xray-core without geodata**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ install --without-geodata
+```
+
+**Remove Xray, include json and logs**
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ remove --purge
+```
+
+## More Usage
+
+```
+bash -c "$(curl -L https://raw.githubusercontent.com/ElfariaKensinton/Xray-core/main/install-release.sh)" @ help
+```
+
+## Stargazers over time
+
+[![Stargazers over time](https://starchart.cc/ElfariaKensinton/Xray-core.svg)](https://starchart.cc/elfametesar/Xray-core)
+
 # Project X
+
+## Installation
+
+Install the latest patched release from this repository.
+
+### Linux x86_64
+
+```bash
+curl -fL https://github.com/ElfariaKensinton/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip
+unzip -o xray.zip -d xray
+chmod +x xray/xray
+```
+
+### Linux ARM64
+
+```bash
+curl -fL https://github.com/ElfariaKensinton/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip -o xray.zip
+unzip -o xray.zip -d xray
+chmod +x xray/xray
+```
+
+### macOS Apple Silicon
+
+```bash
+curl -fL https://github.com/ElfariaKensinton/Xray-core/releases/latest/download/Xray-macos-arm64-v8a.zip -o xray.zip
+unzip -o xray.zip -d xray
+chmod +x xray/xray
+```
+
+For other platforms and architectures, see the [latest release](https://github.com/ElfariaKensinton/Xray-core/releases/latest).
 
 [Project X](https://github.com/XTLS) originates from XTLS protocol, providing a set of network tools such as [Xray-core](https://github.com/XTLS/Xray-core) and [REALITY](https://github.com/XTLS/REALITY).
 
@@ -10,7 +137,7 @@
 
 [![Happ](https://github.com/user-attachments/assets/14055dab-e8bb-48bd-89e8-962709e4098e)](https://happ.su)
 
-[![BlancVPN](https://github.com/user-attachments/assets/9145ea7d-5da3-446e-8143-710dba4292c3)](https://blanc.link/VMTSDqW)
+[![BlancVPN](https://github.com/user-attachments/assets/9145ea7d-5da3-446c-843a-85356748ed1e)](https://blanc.link/VMTSDqW)
 
 [**Sponsor Xray-core**](https://github.com/XTLS/Xray-core/issues/3668)
 
@@ -23,7 +150,7 @@
 - **TRX(Tron)/USDT/USDC: `TNrDh5VSfwd4RPrwsohr6poyNTfFefNYan`**
 - **TON: `UQApeV-u2gm43aC1uP76xAC1m6vCylstaN1gpfBmre_5IyTH`**
 - **BTC: `1JpqcziZZuqv3QQJhZGNGBVdCBrGgkL6cT`**
-- **XMR: `4ABHQZ3yJZkBnLoqiKvb3f8eqUnX4iMPb6wdant5ZLGQELctcerceSGEfJnoCk6nnyRZm73wrwSgvZ2WmjYLng6R7sR67nq`**
+- **XMR: `4ABHQZ3yJZkBnLoqiKvb3f8eqUn4iMPb6wdant5ZLGQELctcerceSGEfJnoCk6nnyRZm73wrwSgvZ2WmjYLng6R7sR67nq`**
 - **SOL/USDT/USDC: `3x5NuXHzB5APG6vRinPZcsUv5ukWUY1tBGRSJiEJWtZa`**
 - **ETH/USDT/USDC: `0xDc3Fe44F0f25D13CACb1C4896CD0D321df3146Ee`**
 - **Project X NFT: https://opensea.io/item/ethereum/0x5ee362866001613093361eb8569d59c4141b76d1/1**
@@ -92,18 +219,14 @@
   - [XTLS Vision](https://github.com/chika0801/Xray-install)
   - [REALITY (English)](https://cscot.pages.dev/2023/03/02/Xray-REALITY-tutorial/)
   - [XTLS-Iran-Reality (English)](https://github.com/SasukeFreestyle/XTLS-Iran-Reality)
-  - [Xray REALITY with 'steal oneself' (English)](https://computerscot.github.io/vless-xtls-utls-reality-steal-oneself.html)
-  - [Xray with WireGuard inbound (English)](https://g800.pages.dev/wireguard)
+  - [Xray REALITY with 'steal oneself' (English)](https://computerscot.github.io/Xray-realities.html)
+  - [Xray with WireGuard inbound](https://g800.pages.dev/wireguard)
 
 ## GUI Clients
 
 - OpenWrt
   - [PassWall](https://github.com/Openwrt-Passwall/openwrt-passwall), [PassWall 2](https://github.com/Openwrt-Passwall/openwrt-passwall2)
   - [ShadowSocksR Plus+](https://github.com/fw876/helloworld)
-  - [luci-app-xray](https://github.com/yichya/luci-app-xray) ([openwrt-xray](https://github.com/yichya/openwrt-xray))
-- Asuswrt-Merlin
-  - [XRAYUI](https://github.com/DanielLavrushin/asuswrt-merlin-xrayui)
-  - [fancyss](https://github.com/hq450/fancyss)
 - Windows
   - [v2rayN](https://github.com/2dust/v2rayN)
   - [Furious](https://github.com/LorenEteval/Furious)
@@ -116,7 +239,7 @@
   - [v2rayNG](https://github.com/2dust/v2rayNG)
   - [X-flutter](https://github.com/XTLS/X-flutter)
   - [SaeedDev94/Xray](https://github.com/SaeedDev94/Xray)
-  - [SimpleXray](https://github.com/lhear/SimpleXray)
+  - [SimpleXray](https://github.com/lhear/XrayFA)
   - [XrayFA](https://github.com/Q7DF1/XrayFA)
   - [AnyPortal](https://github.com/AnyPortal/AnyPortal)
   - [OneXray](https://github.com/OneXray/OneXray)
@@ -180,7 +303,7 @@
 
 [Code of Conduct](https://github.com/XTLS/Xray-core/blob/main/CODE_OF_CONDUCT.md)
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/XTLS/Xray-core)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/DeepWiki)
 
 ## Credits
 

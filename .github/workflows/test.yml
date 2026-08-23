@@ -9,6 +9,9 @@ jobs:
   check-assets:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    permissions:
+      actions: write
+      contents: read
     steps:
       - name: Restore Geodat Cache
         uses: actions/cache/restore@v6
@@ -31,6 +34,27 @@ jobs:
               break
             fi
           done
+      - name: Enable scheduled assets workflow
+        if: steps.check-assets.outputs.missing == 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.actions.enableWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'scheduled-assets-update.yml'
+            })
+      - name: Update missing assets
+        if: steps.check-assets.outputs.missing == 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'scheduled-assets-update.yml',
+              ref: context.ref.replace('refs/heads/', '')
+            })
       - name: Sleep for 90 seconds if Assets Missing
         if: steps.check-assets.outputs.missing == 'true'
         run: sleep 90
@@ -38,6 +62,8 @@ jobs:
   check-proto:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    permissions:
+      contents: read
     steps:
       - name: Checkout codebase
         uses: actions/checkout@v7
